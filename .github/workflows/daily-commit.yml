@@ -1,0 +1,72 @@
+name: Daily Commit
+
+on:
+  schedule:
+    # Runs every day at 10:00 UTC (11:00 WAT)
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Decide whether to commit today
+        id: check
+        shell: bash
+        run: |
+          DAY=$(date +%u)
+
+          # Never commit on Sunday
+          if [ "$DAY" -eq 7 ]; then
+            echo "commit=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Saturday: 60% chance of committing
+          if [ "$DAY" -eq 6 ]; then
+            if [ $((RANDOM % 10)) -lt 6 ]; then
+              echo "commit=true" >> $GITHUB_OUTPUT
+            else
+              echo "commit=false" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+
+          # Monday-Friday: 85% chance of committing
+          if [ $((RANDOM % 100)) -lt 85 ]; then
+            echo "commit=true" >> $GITHUB_OUTPUT
+          else
+            echo "commit=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Random delay (0-2 hours)
+        if: steps.check.outputs.commit == 'true'
+        run: sleep $((RANDOM % 7200))
+
+      - name: Update timestamp
+        if: steps.check.outputs.commit == 'true'
+        run: |
+          echo "Last update: $(date)" > daily.txt
+
+      - name: Commit and push
+        if: steps.check.outputs.commit == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add daily.txt
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: daily update"
+          git push
